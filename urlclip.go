@@ -1,4 +1,4 @@
-package main
+package urlclip
 
 import (
 	"context"
@@ -8,10 +8,8 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
 	"regexp"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/gen2brain/beeep"
@@ -119,15 +117,13 @@ func ParseTitle(r io.Reader) (string, error) {
 	return title, nil
 }
 
-func main() {
+func Run(quitCh chan os.Signal, active *bool) {
 	if err := ReadData(dataFileName); err != nil {
 		log.Println(err)
 	}
 	if err := clipboard.Init(); err != nil {
 		log.Fatal(err)
 	}
-	quitCh := make(chan os.Signal, 1)
-	signal.Notify(quitCh, os.Interrupt, syscall.SIGTERM)
 	cbCh := clipboard.Watch(context.TODO(), clipboard.FmtText)
 	if len(datas) > 0 {
 		var wg sync.WaitGroup
@@ -150,7 +146,7 @@ func main() {
 			for _, d := range datas {
 				if result != nil && d.URL == result.URL {
 					d.Title = result.Title
-					log.Println("get title url:", d.URL, d.Title)
+					log.Println("add title url:", d.URL, d.Title)
 					break
 				}
 			}
@@ -163,25 +159,27 @@ loop:
 	for {
 		select {
 		case text := <-cbCh:
-			url := regex.FindString(string(text))
-			if url != "" {
-				title, _ := GetTitle(context.TODO(), url)
-				log.Println("saved url:", url, title)
-				if !CheckData(url) {
-					datas = append(datas, &Url{
-						URL:       url,
-						Title:     title,
-						CreatedAt: time.Now(),
-					})
-					if SaveData(dataFileName, datas) == nil {
-						Notify("url saved", url)
+			if *active {
+				url := regex.FindString(string(text))
+				if url != "" {
+					title, _ := GetTitle(context.TODO(), url)
+					log.Println("saved url:", url, title)
+					if !CheckData(url) {
+						datas = append(datas, &Url{
+							URL:       url,
+							Title:     title,
+							CreatedAt: time.Now(),
+						})
+						if SaveData(dataFileName, datas) == nil {
+							Notify("url saved", url)
+						}
+					} else {
+						Alert("url already exist", url)
 					}
-				} else {
-					Alert("url already exist", url)
 				}
 			}
 		case <-quitCh:
-			log.Println("gracefull termination")
+			log.Println("urlclip gracefull termination")
 			close(quitCh)
 			break loop
 		}

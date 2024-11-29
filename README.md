@@ -6,6 +6,7 @@
 
 - Url filter with regex pattern.
 - Notify every url is captured.
+- Run in System tray
 
 ## License
 
